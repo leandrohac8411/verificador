@@ -778,6 +778,11 @@ main{max-width:1320px;margin:0 auto;padding:20px 24px 48px}
 .bars .row .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .bars .row.click{cursor:pointer;border-radius:6px} .bars .row.click:hover{background:var(--surface-2)}
 .empty{color:var(--mut);padding:18px 0;text-align:center}
+.tipos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.tipos button{font:inherit;font-size:13px;border:1px solid var(--bd);background:var(--surface);color:var(--fg);border-radius:18px;padding:6px 13px;cursor:pointer}
+.tipos button:hover{background:var(--surface-2)}
+.tipos button.on{background:var(--brand);border-color:var(--brand);color:var(--brand-fg)}
+.tipos .n{font-weight:650;font-variant-numeric:tabular-nums;margin-left:7px;opacity:.85}
 .tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
 .tools input[type=search]{flex:1 1 260px;font:inherit;padding:7px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--surface);color:var(--fg)}
 .tools select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--surface);color:var(--fg)}
@@ -821,7 +826,7 @@ svg text{fill:var(--mut);font-size:11px}
 .foot{color:var(--mut);font-size:12px;margin-top:28px;text-align:center}
 @media (max-width:640px){header{padding:14px 16px 0} main{padding:16px 16px 40px} .kpi .v{font-size:23px}}
 @media print{
-  header nav,header .acoes,.tools,.mais,#drawer,.noprint{display:none!important}
+  header nav,header .acoes,.tools,.tipos,.mais,#drawer,.noprint{display:none!important}
   header{background:none;color:#000;padding:0} body{background:#fff;color:#000}
   .tab{display:none!important} .tab.print{display:block!important}
   .tblwrap,.box,.kpi{box-shadow:none;border-color:#ccc} th{position:static}
@@ -875,10 +880,11 @@ svg text{fill:var(--mut);font-size:11px}
   </section>
 
   <section class="tab print" id="tab-prob">
+    <div class="tipos" id="tp-prob"></div>
     <div class="tools">
       <input type="search" id="q-prob" placeholder="Buscar link, texto ou página…">
       <select id="f-prob-s"><option value="">Quebrados e alertas</option><option>QUEBRADO</option><option>ALERTA</option></select>
-      <select id="f-prob-c"></select>
+      <select id="f-prob-c" hidden></select>
       <button class="btn" id="csv-prob">Exportar CSV</button>
       <span class="info" id="i-prob"></span>
     </div>
@@ -887,9 +893,11 @@ svg text{fill:var(--mut);font-size:11px}
   </section>
 
   <section class="tab" id="tab-onde">
+    <div class="tipos" id="tp-onde"></div>
     <div class="tools">
       <input type="search" id="q-onde" placeholder="Filtrar páginas…">
       <select id="f-onde-s"><option value="">Quebrados e alertas</option><option>QUEBRADO</option><option>ALERTA</option></select>
+      <select id="f-onde-c" hidden></select>
       <span class="info" id="i-onde"></span>
     </div>
     <div id="onde"></div>
@@ -1013,7 +1021,7 @@ $("#bars-cat").innerHTML = Object.keys(CAT).filter(k => porCat[k]).map(k => {
     <div class="tr" style="width:${c.t/maxCat*100}%">${["QUEBRADO","ALERTA","OK","IGNORADO"].map(s => c[s] ? `<span style="width:${c[s]/c.t*100}%;background:${COR[s]}"></span>` : "").join("")}</div>
     <div class="n" style="color:${c.QUEBRADO ? "var(--q)" : "var(--mut)"}">${fmt(c.QUEBRADO)}</div></div>`;
 }).join("") + `<div class="mut" style="font-size:12px;margin-top:6px">Número à direita: links quebrados na categoria.</div>`;
-$("#bars-cat").onclick = e => { const r = e.target.closest("[data-cat]"); if (!r) return; $("#f-prob-c").value = r.dataset.cat; abrir("prob"); };
+$("#bars-cat").onclick = e => { const r = e.target.closest("[data-cat]"); if (!r) return; $("#f-prob-c").value = r.dataset.cat; $("#f-prob-c").dispatchEvent(new Event("input")); abrir("prob"); };
 
 // Páginas com mais problemas
 const rankPag = P.map((p, i) => ({i, n: probPorPag[i].length, q: probPorPag[i].filter(l => l.s === "QUEBRADO").length})).filter(x => x.n).sort((a, b) => b.n - a.n).slice(0, 10);
@@ -1068,8 +1076,23 @@ L.forEach(l => l.mot = PROB(l) ? motivo(l) : "");
 
 /* ---------- Tabelas genéricas ---------- */
 const optsCat = `<option value="">Todas as categorias</option>` + Object.keys(CAT).filter(k => porCat[k]).map(k => `<option value="${k}">${CAT[k]}</option>`).join("");
-$("#f-prob-c").innerHTML = optsCat; $("#f-todos-c").innerHTML = optsCat;
+$("#f-prob-c").innerHTML = optsCat; $("#f-todos-c").innerHTML = optsCat; $("#f-onde-c").innerHTML = optsCat;
 let filtroMotivo = "";
+
+// Botões por tipo de link (controlam o filtro de categoria oculto)
+const ORD_TIPO = ["documento", "pagina", "imagem", "externo", "recurso"];
+const probPorCat = {};
+probs.forEach(l => probPorCat[l.c] = (probPorCat[l.c] || 0) + 1);
+function botoesTipo(el, sel){
+  $(el).innerHTML = `<button data-c="">Todos<span class="n">${fmt(probs.length)}</span></button>`
+    + ORD_TIPO.filter(k => probPorCat[k]).map(k => `<button data-c="${k}">${CAT[k]}<span class="n">${fmt(probPorCat[k])}</span></button>`).join("");
+  const marcar = () => $(el).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.c === $(sel).value));
+  $(el).onclick = e => { const b = e.target.closest("button"); if (!b) return; $(sel).value = b.dataset.c; $(sel).dispatchEvent(new Event("input")); };
+  $(sel).addEventListener("input", marcar);
+  marcar();
+}
+botoesTipo("#tp-prob", "#f-prob-c");
+botoesTipo("#tp-onde", "#f-onde-c");
 
 function celLink(l){
   const chips = (l.menu ? `<span class="chip" title="Aparece em quase todas as páginas – corrigir no menu/rodapé">menu/rodapé</span>` : "")
@@ -1138,8 +1161,8 @@ function linhaOnde(l){
     ${l.x.length ? ` <small>— texto do link: “${esc(l.x[0])}”</small>` : ""}<br><small>${esc(l.d || "")}</small></div>`;
 }
 render.onde = function(){
-  const q = $("#q-onde").value.trim().toLowerCase(), s = $("#f-onde-s").value;
-  const ok = l => !s || l.s === s;
+  const q = $("#q-onde").value.trim().toLowerCase(), s = $("#f-onde-s").value, c = $("#f-onde-c").value;
+  const ok = l => (!s || l.s === s) && (!c || l.c === c);
   let h = "";
   const menus = probs.filter(l => l.menu && ok(l));
   if (menus.length && (!q || "menu rodapé".includes(q) || menus.some(l => l.busca.includes(q)))) {
@@ -1159,7 +1182,7 @@ render.onde = function(){
   $("#onde").innerHTML = h;
   $("#i-onde").textContent = `${fmt(lista.length)} página(s)`;
 };
-["#q-onde","#f-onde-s"].forEach(s => $(s).addEventListener("input", render.onde));
+["#q-onde","#f-onde-s","#f-onde-c"].forEach(s => $(s).addEventListener("input", render.onde));
 
 /* ---------- Detalhe ---------- */
 function detalhe(i){

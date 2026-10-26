@@ -4,3 +4,6 @@ relatorios/
 # Python
 __pycache__/
 *.pyc
+
+# Configuração local do Claude Code
+.claude/
