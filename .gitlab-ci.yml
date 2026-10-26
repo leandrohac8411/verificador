@@ -1,0 +1,20 @@
+# Verificação mensal de links do sítio do IPEDF
+# Em GitLab > Build > Pipeline schedules, crie um agendamento
+# "0 7 1 * *" (dia 1 de cada mês, 07h) no fuso America/Sao_Paulo.
+# O runner precisa ter acesso à internet (ou ao sítio, se rodar na rede interna).
+
+verificar-links:
+  image: python:3.12-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"        # permite rodar manualmente
+  script:
+    - python verifica_links.py --saida relatorios --max-paginas 3000
+  allow_failure:
+    exit_codes: 1          # 1 = encontrou links quebrados (não é falha do job)
+  artifacts:
+    when: always
+    name: "links-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - relatorios/
+    expire_in: 1 year

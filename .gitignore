@@ -1,0 +1,6 @@
+# Relatórios gerados a cada execução (grandes; ficam nos artefatos do CI ou na máquina)
+relatorios/
+
+# Python
+__pycache__/
+*.pyc
