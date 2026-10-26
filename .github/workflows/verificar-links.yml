@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write          # gravar o histórico na branch "historico"
+  contents: write          # gravar o histórico (branch "historico") e o index.html (main)
 
 concurrency:
   group: verificar-links
@@ -68,6 +68,21 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -m "Histórico da verificação de $(date -u +%Y-%m-%d)"
           git push origin historico
+
+      - name: Publicar painel (index.html para a Vercel)
+        # o push na main dispara o deploy automático da Vercel
+        if: success()
+        run: |
+          cp relatorios/painel_links_atual.html index.html
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "Painel sem alterações."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Painel de links de $(date -u +%Y-%m)"
+          git push origin HEAD:main
 
       - name: Guardar relatórios
         if: always()
