@@ -48,6 +48,9 @@ Código de saída: `0` sem quebrados · `1` há quebrados · `2` sítio inacess�
 **GitHub Actions** – já configurado em `.github/workflows/verificar-links.yml`: roda no
 dia 1 de cada mês às 07h (Brasília) e pode ser disparado à mão em *Actions > Verificar
 links > Run workflow*. O relatório fica nos artefatos da execução por 90 dias.
+O histórico (`historico.json` e o CSV de quebrados dos 2 últimos meses) é gravado
+automaticamente na branch `historico`, para o gráfico de evolução e a marcação de
+links "novos" funcionarem entre as execuções.
 
 **GitLab CI** – suba esta pasta num repositório, e em *Build > Pipeline schedules*
 crie o agendamento `0 7 1 * *` (fuso America/Sao_Paulo). O relatório fica nos
