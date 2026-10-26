@@ -1,0 +1,37 @@
+# Verificação mensal de links do sítio do IPEDF
+# Roda no dia 1 de cada mês às 07h de Brasília (10h UTC; o cron do GitHub é sempre em UTC).
+# Também pode ser executado manualmente em Actions > Verificar links > Run workflow.
+
+name: Verificar links
+
+on:
+  schedule:
+    - cron: "0 10 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verificar links
+        # 1 = encontrou links quebrados (não é falha do job); 2 = sítio inacessível
+        run: |
+          python verifica_links.py --saida relatorios --max-paginas 3000 || [ $? -eq 1 ]
+
+      - name: Guardar relatórios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: links-${{ github.run_number }}
+          path: relatorios/
+          retention-days: 90

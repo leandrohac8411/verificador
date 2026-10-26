@@ -45,6 +45,10 @@ Código de saída: `0` sem quebrados · `1` há quebrados · `2` sítio inacess�
 
 ## Agendamento mensal (escolha um)
 
+**GitHub Actions** – já configurado em `.github/workflows/verificar-links.yml`: roda no
+dia 1 de cada mês às 07h (Brasília) e pode ser disparado à mão em *Actions > Verificar
+links > Run workflow*. O relatório fica nos artefatos da execução por 90 dias.
+
 **GitLab CI** – suba esta pasta num repositório, e em *Build > Pipeline schedules*
 crie o agendamento `0 7 1 * *` (fuso America/Sao_Paulo). O relatório fica nos
 artefatos do pipeline por 1 ano. Arquivo: `.gitlab-ci.yml`.
