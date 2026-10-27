@@ -43,6 +43,9 @@ from html.parser import HTMLParser
 from threading import Lock
 
 USER_AGENT = "IPEDF-UCTIS-VerificadorLinks/1.0 (+transparencia ativa)"
+# Usado para confirmar um link quebrado do jeito que um navegador o abriria
+UA_NAVEGADOR = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
 
 # Esquemas e padrões que não são "links" de verdade
 IGNORAR_ESQUEMAS = ("mailto:", "tel:", "javascript:", "data:", "whatsapp:", "sms:")
@@ -176,6 +179,7 @@ class Estado:
     resultados: dict = field(default_factory=dict)
     paginas_visitadas: set = field(default_factory=set)
     titulos: dict = field(default_factory=dict)
+    trilhas: dict = field(default_factory=dict)      # url -> caminho de navegação
     lock: Lock = field(default_factory=Lock)
 
 
@@ -195,12 +199,12 @@ class SemRedirecionar(urllib.request.HTTPRedirectHandler):
     pass
 
 
-def requisitar(url, metodo, timeout, ctx, ler_corpo=0):
+def requisitar(url, metodo, timeout, ctx, ler_corpo=0, ua=USER_AGENT):
     req = urllib.request.Request(
         url,
         method=metodo,
         headers={
-            "User-Agent": USER_AGENT,
+            "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
             "Accept-Language": "pt-BR,pt;q=0.9",
         },
@@ -236,6 +240,24 @@ def requisitar(url, metodo, timeout, ctx, ler_corpo=0):
                 f"{type(e).__name__}: {e}")
 
 
+BREADCRUMB = re.compile(r'<ol[^>]*class="[^"]*\bbreadcrumb\b[^"]*"[^>]*>(.*?)</ol>', re.I | re.S)
+
+
+def caminho_navegacao(texto_html: str) -> list:
+    """Lê o "Caminho de Navegação" (breadcrumb do Liferay) da página."""
+    m = BREADCRUMB.search(texto_html)
+    if not m:
+        return []
+    itens = []
+    for li in re.findall(r"<li[^>]*>(.*?)</li>", m.group(1), re.I | re.S):
+        t = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", li)).split())
+        if t and t not in itens:
+            itens.append(t)
+    if itens and itens[0].startswith("Instituto de Pesquisa"):
+        itens[0] = "Início"
+    return itens
+
+
 def decodificar(corpo: bytes, content_type: str) -> str:
     m = re.search(r"charset=([\w-]+)", content_type or "", re.I)
     for enc in ([m.group(1)] if m else []) + ["utf-8", "latin-1"]:
@@ -262,8 +284,10 @@ def normalizar(url_bruta: str, base: str):
         return url_bruta  # URL malformada: será reportada como quebrada
     if partes.scheme not in ("http", "https"):
         return None
-    # Remove fragmento, normaliza host, codifica caracteres acentuados no caminho
-    caminho = urllib.parse.quote(urllib.parse.unquote(partes.path or "/"), safe="/%:@!$&'()*+,;=-._~")
+    # Remove fragmento, normaliza host e codifica só o que o navegador codificaria
+    # (acentos, espaços). Os escapes %XX existentes ficam como estão: o sítio tem
+    # arquivos cujo nome real contém "%25..." e decodificá-los leva a um 404 falso.
+    caminho = urllib.parse.quote(partes.path or "/", safe="/%:@!$&'()*+,;=-._~")
     # Na consulta, codifica só o que não é permitido (espaços, acentos, quebras
     # de linha), preservando os escapes %XX já existentes
     consulta = urllib.parse.quote(partes.query, safe="=&%/?:@!$'()*+,;-._~")
@@ -369,6 +393,14 @@ def testar_link(url, args, ctx, interno):
             elif "login" in final.lower() and "login" not in url.lower():
                 r.situacao = "ALERTA"
                 r.detalhe = "Redireciona para tela de login"
+
+    # Confirmação: antes de dar como quebrado, abre de novo como um navegador
+    # (alguns servidores recusam robôs ou falham de forma intermitente)
+    if r.situacao == "QUEBRADO" and not r.detalhe.startswith("Página exibe"):
+        st2, final2, ct2, _, ms2, erro2 = requisitar(
+            url, "GET", args.timeout, ctx, ler_corpo=1024, ua=UA_NAVEGADOR)
+        if 200 <= st2 < 400:
+            return Resultado(url, st2, "OK", "", final2, ms2)
     return r
 
 
@@ -429,6 +461,9 @@ def rastrear(args):
                 _t = re.search(r"<title[^>]*>(.*?)</title>", decodificar(corpo[:200_000], ct), re.I | re.S)
                 if _t:
                     estado.titulos[url] = " ".join(html.unescape(_t.group(1)).split())[:200]
+                trilha = caminho_navegacao(decodificar(corpo[:300_000], ct))
+                if trilha:
+                    estado.trilhas[url] = trilha
             if r.situacao == "OK" and "html" in ct.lower():
                 txt = decodificar(corpo[:200_000], ct)
                 t = re.search(r"<title[^>]*>(.*?)</title>", txt, re.I | re.S)
@@ -491,6 +526,9 @@ def rastrear(args):
 
     # ---- Fase 2: testar os links ainda não testados -------------------------
     pendentes = [u for u in estado.ocorrencias if u not in estado.resultados]
+    # Páginas que falharam no rastreamento por instabilidade (sem resposta/5xx): testar de novo
+    pendentes += [u for u, r in estado.resultados.items()
+                  if r.situacao == "QUEBRADO" and (r.status == 0 or r.status >= 500)]
     if args.sem_externos:
         externos = [u for u in pendentes if not mesmo_site(u, dominios)]
         for u in externos:
@@ -564,6 +602,8 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
         linhas_csv.append({
             "situacao": r.situacao, "status_http": r.status or "", "link": url,
             "categoria": cat, "texto_do_link": " | ".join(textos)[:300],
+            "caminho_navegacao": " ; ".join(" > ".join(estado.trilhas[p]) for p in pags[:5]
+                                            if p in estado.trilhas),
             "qtd_paginas": len(pags),
             "paginas_onde_aparece": " ; ".join(pags[:30]) + (" ; ..." if len(pags) > 30 else ""),
             "detalhe": r.detalhe,
@@ -576,6 +616,7 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
                           "d": r.detalhe, "f": "", "ms": r.tempo_ms, "x": [], "p": []})
             linhas_csv.append({"situacao": r.situacao, "status_http": r.status or "",
                                "link": url, "categoria": "pagina", "texto_do_link": "",
+                               "caminho_navegacao": "",
                                "qtd_paginas": 0, "paginas_onde_aparece": "(ponto de partida)",
                                "detalhe": r.detalhe, "url_final": "", "tempo_ms": r.tempo_ms})
 
@@ -583,12 +624,12 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
     linhas_csv.sort(key=lambda l: (ordem.get(l["situacao"], 9), l["categoria"], -l["qtd_paginas"], l["link"]))
 
     # ---- CSVs ---------------------------------------------------------------
-    campos = ["situacao", "status_http", "link", "categoria", "texto_do_link", "qtd_paginas",
+    campos = ["situacao", "status_http", "link", "categoria", "texto_do_link", "caminho_navegacao", "qtd_paginas",
               "paginas_onde_aparece", "detalhe", "url_final", "tempo_ms"]
     arq_todos = os.path.join(args.saida, f"todos_links_{ref}.csv")
     arq_quebr = os.path.join(args.saida, f"links_quebrados_{ref}.csv")
     for arq, dados in ((arq_todos, linhas_csv),
-                       (arq_quebr, [l for l in linhas_csv if l["situacao"] in ("QUEBRADO", "ALERTA")])):
+                       (arq_quebr, [l for l in linhas_csv if l["situacao"] == "QUEBRADO"])):
         with open(arq, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.DictWriter(f, fieldnames=campos, delimiter=";")
             w.writeheader(); w.writerows(dados)
@@ -643,7 +684,7 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
             "comparou_com": previos[-1][16:23] if previos else "",
             "demo": bool(getattr(args, "demo", False)),
         },
-        "paginas": [{"u": u, "t": estado.titulos.get(u, ""),
+        "paginas": [{"u": u, "t": estado.titulos.get(u, ""), "b": estado.trilhas.get(u, []),
                      "h": estado.resultados[u].status if u in estado.resultados else 0,
                      "s": estado.resultados[u].situacao if u in estado.resultados else "",
                      "n": links_por_pagina.get(u, 0)} for u in paginas],
@@ -867,7 +908,7 @@ svg text{fill:var(--mut);font-size:11px}
         <div id="hist"></div>
       </div>
       <div class="box c7">
-        <h3>Páginas com mais links problemáticos</h3>
+        <h3>Páginas com mais links quebrados</h3>
         <p class="hint">Clique para ver o que corrigir em cada página. Links de menu/rodapé estão fora desta contagem.</p>
         <div class="bars" id="bars-pag"></div>
       </div>
@@ -883,7 +924,7 @@ svg text{fill:var(--mut);font-size:11px}
     <div class="tipos" id="tp-prob"></div>
     <div class="tools">
       <input type="search" id="q-prob" placeholder="Buscar link, texto ou página…">
-      <select id="f-prob-s"><option value="">Quebrados e alertas</option><option>QUEBRADO</option><option>ALERTA</option></select>
+      <select id="f-prob-s" hidden><option value="">Quebrados</option></select>
       <select id="f-prob-c" hidden></select>
       <button class="btn" id="csv-prob">Exportar CSV</button>
       <span class="info" id="i-prob"></span>
@@ -896,7 +937,7 @@ svg text{fill:var(--mut);font-size:11px}
     <div class="tipos" id="tp-onde"></div>
     <div class="tools">
       <input type="search" id="q-onde" placeholder="Filtrar páginas…">
-      <select id="f-onde-s"><option value="">Quebrados e alertas</option><option>QUEBRADO</option><option>ALERTA</option></select>
+      <select id="f-onde-s" hidden><option value="">Quebrados</option></select>
       <select id="f-onde-c" hidden></select>
       <span class="info" id="i-onde"></span>
     </div>
@@ -941,7 +982,7 @@ const curto = u => u.replace(/^https?:\/\/(www\.)?/, "");
 const CAT = {pagina:"Página interna", documento:"Documento (PDF etc.)", imagem:"Imagem", recurso:"Script/estilo", externo:"Sítio externo"};
 const COR = {QUEBRADO:"var(--q)", ALERTA:"var(--a)", OK:"var(--ok)", IGNORADO:"var(--ig)"};
 const ROT = {QUEBRADO:"Quebrado", ALERTA:"Alerta", OK:"OK", IGNORADO:"Ignorado"};
-const PROB = l => l.s === "QUEBRADO" || l.s === "ALERTA";
+const PROB = l => l.s === "QUEBRADO";
 
 const P = D.paginas, L = D.links, M = D.meta, H = D.historico || [];
 const nPag = P.length;
@@ -971,7 +1012,7 @@ if (!M.externos_testados) av += `<div class="aviso">Links externos não foram te
 $("#avisos").innerHTML = av;
 
 /* ---------- Abas ---------- */
-const ABAS = [["geral","Visão geral"],["prob","Links com problema"],["onde","Onde corrigir"],["todos","Todos os links"],["pags","Páginas percorridas"]];
+const ABAS = [["geral","Visão geral"],["prob","Links quebrados"],["onde","Onde corrigir"],["todos","Todos os links"],["pags","Páginas percorridas"]];
 const nQ = L.filter(l => l.s === "QUEBRADO").length;
 $("#nav").innerHTML = ABAS.map(([k, t]) => `<button data-k="${k}">${t}${k === "prob" && nQ ? `<span class="cnt">${fmt(nQ)}</span>` : ""}</button>`).join("");
 const render = {};
@@ -1099,10 +1140,12 @@ function celLink(l){
     + (l.n === 1 && M.comparou_com ? `<span class="chip novo">novo</span>` : "");
   return `<a href="${esc(l.u)}" target="_blank" onclick="event.stopPropagation()">${esc(curto(l.u))}</a>${chips}${l.x.length ? `<br><small>texto: ${esc(l.x.slice(0,2).join(" · "))}</small>` : ""}`;
 }
+// Caminho de navegação da página (Início › Pesquisas › PMAD), ou o título se não houver
+const trilha = p => (p.b && p.b.length) ? p.b.join(" › ") : (p.t || curto(p.u));
 function celOnde(l){
   if (!l.p.length) return `<small>(ponto de partida)</small>`;
   const p = P[l.p[0]];
-  return `<span title="${esc(p.u)}">${esc(p.t || curto(p.u))}</span>${l.p.length > 1 ? `<br><small>+ ${fmt(l.p.length - 1)} página(s)</small>` : ""}`;
+  return `<a href="${esc(p.u)}" target="_blank" onclick="event.stopPropagation()" title="${esc(p.u)}">${esc(trilha(p))}</a>${l.p.length > 1 ? `<br><small>+ ${fmt(l.p.length - 1)} página(s)</small>` : ""}`;
 }
 function tabela(cfg){
   let limite = 100, ord = cfg.ord, asc = cfg.asc ?? false, linhas = [];
@@ -1132,7 +1175,7 @@ const colsLink = [
   {k:"h", h:"HTTP", cls:"num", r: l => l.h || "—", v: l => l.h},
   {k:"u", h:"Link", cls:"u", r: celLink, v: l => l.u},
   {k:"c", h:"Categoria", r: l => CAT[l.c] || l.c, v: l => l.c},
-  {k:"p", h:"Onde aparece", r: celOnde, v: l => l.p.length},
+  {k:"p", h:"Onde está no sítio", r: celOnde, v: l => l.p.length},
   {k:"d", h:"Detalhe", r: l => esc(l.d || ""), v: l => l.d},
 ];
 function filtraLinks(base, q, s, c){
@@ -1144,10 +1187,10 @@ const tProb = tabela({t:"#t-prob", info:"#i-prob", mais:"#m-prob", inputs:["#q-p
 ["#q-prob","#f-prob-s","#f-prob-c"].forEach(s => $(s).addEventListener("input", () => filtroMotivo = ""));
 const tTodos = tabela({t:"#t-todos", info:"#i-todos", mais:"#m-todos", inputs:["#q-todos","#f-todos-s","#f-todos-c"], cols: colsLink, ord:"s", asc:true, id: l => l.i, click: detalhe,
   dados: () => filtraLinks(L, "#q-todos", "#f-todos-s", "#f-todos-c")});
-P.forEach((p, i) => { p.i = i; p.np = probPorPag[i].length; p.busca = (p.u + " " + p.t).toLowerCase(); });
+P.forEach((p, i) => { p.i = i; p.np = probPorPag[i].length; p.busca = (p.u + " " + p.t + " " + (p.b || []).join(" ")).toLowerCase(); });
 const tPags = tabela({t:"#t-pags", info:"#i-pags", mais:"#m-pags", inputs:["#q-pags","#f-pags-p"], ord:"np",
   cols: [
-    {k:"t", h:"Página", cls:"u", r: p => `<b>${esc(p.t || "(sem título)")}</b><br><a href="${esc(p.u)}" target="_blank" onclick="event.stopPropagation()">${esc(curto(p.u))}</a>`, v: p => p.t},
+    {k:"t", h:"Página", cls:"u", r: p => `<b>${esc(p.t || "(sem título)")}</b>${p.b && p.b.length ? `<br><small class="mut">${esc(trilha(p))}</small>` : ""}<br><a href="${esc(p.u)}" target="_blank" onclick="event.stopPropagation()">${esc(curto(p.u))}</a>`, v: p => p.t},
     {k:"h", h:"HTTP", cls:"num", r: p => p.s === "QUEBRADO" ? `<span class="tag t-QUEBRADO">${p.h || "erro"}</span>` : p.h, v: p => p.h},
     {k:"n", h:"Links na página", cls:"num", r: p => fmt(p.n), v: p => p.n},
     {k:"np", h:"Com problema", cls:"num", r: p => p.np ? `<b style="color:var(--q)">${fmt(p.np)}</b>` : "0", v: p => p.np},
@@ -1175,7 +1218,7 @@ render.onde = function(){
     .sort((a, b) => b.ls.length - a.ls.length);
   h += `<div class="secao">Por página (${fmt(lista.length)})</div>`;
   h += lista.length ? lista.map(({p, i, ls}) => `<details class="pg" id="pg-${i}"><summary><div class="tt"><b>${esc(p.t || "(sem título)")}</b>
-      <a href="${esc(p.u)}" target="_blank" onclick="event.stopPropagation()">${esc(curto(p.u))}</a></div>
+      <small class="mut">${esc(trilha(p))}</small><br><a href="${esc(p.u)}" target="_blank" onclick="event.stopPropagation()">${esc(curto(p.u))}</a></div>
       <div class="ct">${ls.filter(l => l.s === "QUEBRADO").length ? `<span class="tag t-QUEBRADO">${ls.filter(l => l.s === "QUEBRADO").length} quebrado(s)</span>` : ""}${ls.filter(l => l.s === "ALERTA").length ? `<span class="tag t-ALERTA">${ls.filter(l => l.s === "ALERTA").length} alerta(s)</span>` : ""}</div></summary>
       <div class="lst">${ls.sort((a, b) => ordS[a.s] - ordS[b.s]).map(linhaOnde).join("")}</div></details>`).join("")
     : `<div class="empty">Nenhuma página com links problemáticos${q || s ? " para esse filtro" : ""}. ✔</div>`;
@@ -1198,7 +1241,7 @@ function detalhe(i){
     </dl>
     <p><a class="btn" href="${esc(l.u)}" target="_blank">Abrir o link</a></p>
     <h3 style="font-size:14px">Aparece em ${fmt(l.p.length)} página(s)${l.menu ? " — provavelmente no menu ou rodapé" : ""}</h3>
-    <ol>${l.p.slice(0, 300).map(pi => `<li><a href="${esc(P[pi].u)}" target="_blank">${esc(P[pi].t || curto(P[pi].u))}</a><br><small>${esc(curto(P[pi].u))}</small></li>`).join("")}</ol>
+    <ol>${l.p.slice(0, 300).map(pi => `<li><a href="${esc(P[pi].u)}" target="_blank">${esc(trilha(P[pi]))}</a><br><small>${esc(curto(P[pi].u))}</small></li>`).join("")}</ol>
     ${l.p.length > 300 ? `<p class="mut">… e mais ${fmt(l.p.length - 300)}.</p>` : ""}`;
   $("#drawer").classList.add("on");
 }
@@ -1207,9 +1250,9 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") $("#drawer")
 
 /* ---------- CSV ---------- */
 function baixarCSV(linhas, nome){
-  const cab = ["situacao","http","link","categoria","texto_do_link","qtd_paginas","pagina_exemplo","detalhe"];
+  const cab = ["situacao","http","link","categoria","texto_do_link","caminho_navegacao","qtd_paginas","pagina_exemplo","detalhe"];
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const corpo = linhas.map(l => [l.s, l.h || "", l.u, CAT[l.c] || l.c, l.x.join(" | "), l.p.length, l.p.length ? P[l.p[0]].u : "", l.d].map(q).join(";"));
+  const corpo = linhas.map(l => [l.s, l.h || "", l.u, CAT[l.c] || l.c, l.x.join(" | "), l.p.length ? trilha(P[l.p[0]]) : "", l.p.length, l.p.length ? P[l.p[0]].u : "", l.d].map(q).join(";"));
   const blob = new Blob(["﻿" + [cab.join(";"), ...corpo].join("\r\n")], {type: "text/csv;charset=utf-8"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nome; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
