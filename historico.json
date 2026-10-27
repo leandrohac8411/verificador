@@ -1,13 +1,13 @@
 [
  {
-  "data": "2026-10-26 15:30",
+  "data": "2026-10-27 11:23",
   "ref": "2026-10",
-  "paginas": 756,
-  "links": 10932,
-  "quebrados": 994,
-  "quebrados_internos": 862,
-  "quebrados_externos": 132,
+  "paginas": 757,
+  "links": 10933,
+  "quebrados": 457,
+  "quebrados_internos": 334,
+  "quebrados_externos": 123,
   "alertas": 11,
-  "ok": 8780
+  "ok": 9317
  }
 ]
