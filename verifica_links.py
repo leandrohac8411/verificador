@@ -136,7 +136,10 @@ class ExtratorLinks(HTMLParser):
         valor = (a.get(attr) or "").strip()
         if not valor:
             return
-        if tag == "link" and (a.get("rel") or "").lower() not in ("stylesheet", "icon", "alternate"):
+        # Só estilos e ícones: <link rel="canonical/alternate"> não é clicável pelo visitante
+        # (no Liferay aponta para o endereço "curto" da página, que pode dar 404
+        # enquanto o endereço do menu funciona)
+        if tag == "link" and (a.get("rel") or "").lower() not in ("stylesheet", "icon", "shortcut icon"):
             return
         if tag == "a":
             self._a_atual = [valor, "a", a.get("title") or a.get("aria-label") or ""]
@@ -566,7 +569,9 @@ def categoria_link(url, tags, dominios):
         return "imagem"
     if "/documents/" in caminho or EXTENSOES_ARQUIVO.search(caminho):
         return "documento"
-    if tags & {"script", "link"}:
+    # Só é "recurso" se aparecer apenas como <script>/<link>; se também estiver
+    # num <a> (ex.: item de menu), é um link que o visitante clica
+    if tags & {"script", "link"} and not tags & {"a", "area", "iframe"}:
         return "recurso"
     return "pagina"
 
