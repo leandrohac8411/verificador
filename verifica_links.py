@@ -93,6 +93,10 @@ SOFT_404 = re.compile(
     re.I,
 )
 
+# Endereço de e-mail cadastrado como link de página (faltou o "mailto:")
+EMAIL_SEM_MAILTO = re.compile(r"/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/?$", re.I)
+DETALHE_EMAIL = "E-mail cadastrado sem mailto:"
+
 EXTENSOES_ARQUIVO = re.compile(
     r"\.(pdf|docx?|xlsx?|pptx?|odt|ods|csv|zip|rar|7z|jpe?g|png|gif|svg|webp|mp4|mp3)$",
     re.I,
@@ -580,6 +584,12 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
     for url, ocs in estado.ocorrencias.items():
         for p in {o.pagina for o in ocs}:
             links_por_pagina[p] += 1
+
+    # E-mail usado como endereço de página: o erro é de cadastro, não de página removida
+    for url, r in estado.resultados.items():
+        m = EMAIL_SEM_MAILTO.search(urllib.parse.urlsplit(url).path)
+        if r.situacao == "QUEBRADO" and m:
+            r.detalhe = f"{DETALHE_EMAIL} trocar por mailto:{urllib.parse.unquote(m.group(1))}"
 
     # ---- Links ------------------------------------------------------------
     links = []
@@ -1075,6 +1085,7 @@ $("#bars-pag").onclick = e => { const r = e.target.closest("[data-pi]"); if (!r)
 
 // Tipos de erro
 function motivo(l){
+  if (l.d && l.d.startsWith("E-mail cadastrado sem mailto:")) return "E-mail cadastrado sem mailto:";
   if (l.h) {
     const nomes = {400:"Requisição inválida",401:"Exige login",403:"Acesso negado",404:"Não encontrado",405:"Método não permitido",410:"Removido",429:"Excesso de requisições",500:"Erro no servidor",502:"Gateway inválido",503:"Indisponível",504:"Tempo esgotado no gateway"};
     if (l.d && /soft 404/.test(l.d)) return "Página “não encontrada” (HTTP 200)";
