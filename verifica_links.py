@@ -23,6 +23,7 @@ Código de saída: 0 = nenhum link quebrado, 1 = há links quebrados,
 """
 
 import argparse
+import base64
 import csv
 import html
 import json
@@ -743,10 +744,10 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
     js = json.dumps(dados, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     arq_html = os.path.join(args.saida, f"painel_links_{ref}.html")
     with open(arq_html, "w", encoding="utf-8") as f:
-        f.write(PAINEL_HTML.replace("/*__DADOS__*/null", js))
+        f.write(montar_painel(js))
     try:  # cópia com nome fixo, para quem quiser publicar/abrir sempre o mesmo endereço
         with open(os.path.join(args.saida, "painel_links_atual.html"), "w", encoding="utf-8") as f:
-            f.write(PAINEL_HTML.replace("/*__DADOS__*/null", js))
+            f.write(montar_painel(js))
     except OSError:
         pass
 
@@ -757,6 +758,19 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
     log(f"Problemas:  {arq_quebr}")
     log(f"Inventário: {arq_todos}")
     return cont["QUEBRADO"]
+
+
+def montar_painel(js: str) -> str:
+    """Preenche o modelo do painel com os dados e o logo (embutido, arquivo único)."""
+    logo = ""
+    arq = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo_ipedf.png")
+    try:
+        with open(arq, "rb") as f:
+            logo = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+    except OSError:
+        pass
+    return (PAINEL_HTML.replace('/*__LOGO__*/""', json.dumps(logo))
+            .replace("/*__DADOS__*/null", js))
 
 
 # --------------------------------------------------------------------------- #
@@ -915,12 +929,40 @@ td small,.mut{color:var(--mut)}
 svg text{fill:var(--mut);font-size:11px}
 .foot{color:var(--mut);font-size:12px;margin-top:28px;text-align:center}
 @media (max-width:640px){header{padding:14px 16px 0} main{padding:16px 16px 40px} .kpi .v{font-size:23px}}
+/* ---------- Relatório impresso ---------- */
+#impressao{display:none}
+@page{size:A4 landscape;margin:12mm 10mm 14mm;
+  @bottom-left{content:"IPEDF · Verificação de links do sítio";font:8pt system-ui,sans-serif;color:#6b7280}
+  @bottom-right{content:"Página " counter(page) " de " counter(pages);font:8pt system-ui,sans-serif;color:#6b7280}}
 @media print{
-  header nav,header .acoes,.tools,.tipos,.mais,#drawer,.noprint{display:none!important}
-  header{background:none;color:#000;padding:0} body{background:#fff;color:#000}
-  .tab{display:none!important} .tab.print{display:block!important}
-  .tblwrap,.box,.kpi{box-shadow:none;border-color:#ccc} th{position:static}
-  td.u{max-width:none}
+  body>header,main,#drawer{display:none!important}
+  body{background:#fff;color:#111827}
+  #impressao{display:block;font:9pt/1.4 "Segoe UI",system-ui,Arial,sans-serif;color:#111827;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #impressao a{color:#1f4e9c;text-decoration:none}
+  .im-topo{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:8px;border-bottom:3px solid #2a5ca8}
+  .im-topo img{height:15mm;width:auto}
+  .im-topo .tit{text-align:right}
+  .im-topo h1{margin:0;font-size:16pt;color:#1e3a6e;font-weight:650}
+  .im-topo .sub{color:#4b5563;font-size:9pt;margin-top:2px}
+  .im-faixa{height:3px;background:#0a9f4a;margin-bottom:10px}
+  .im-resumo{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:0 0 6px}
+  .im-resumo div{border:1px solid #d1d5db;border-radius:6px;padding:6px 8px}
+  .im-resumo b{display:block;font-size:14pt;line-height:1.1;color:#1e3a6e}
+  .im-resumo .q b{color:#b42318}
+  .im-resumo span{color:#4b5563;font-size:8pt}
+  .im-nota{color:#4b5563;font-size:8.5pt;margin:4px 0 10px}
+  .im-sec{margin-top:12px}
+  .im-sec h2{font-size:11.5pt;margin:0 0 4px;padding:4px 8px;background:#eef3fb;color:#1e3a6e;border-left:4px solid #2a5ca8;break-after:avoid}
+  .im-sec h2 small{font-weight:400;color:#4b5563;font-size:9pt}
+  #impressao table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5pt}
+  #impressao th{background:#1e3a6e;color:#fff;text-align:left;padding:4px 6px;font-weight:600;font-size:8pt}
+  #impressao td{padding:4px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;overflow-wrap:anywhere}
+  #impressao tr{break-inside:avoid}
+  #impressao tbody tr:nth-child(even) td{background:#f8fafc}
+  #impressao td small{color:#6b7280}
+  #impressao td.n{text-align:right;color:#6b7280}
+  .im-fim{margin-top:14px;color:#6b7280;font-size:8pt;text-align:center}
 }
 </style>
 </head>
@@ -1018,10 +1060,13 @@ svg text{fill:var(--mut);font-size:11px}
   <div class="foot" id="foot"></div>
 </main>
 
+<div id="impressao"></div>
+
 <div id="drawer"><div class="bg"></div><div class="pn"><button class="btn x" id="dr-x">Fechar</button><div id="dr"></div></div></div>
 
 <script>
 const D = /*__DADOS__*/null;
+const LOGO = /*__LOGO__*/"";
 (function(){
 "use strict";
 const $ = s => document.querySelector(s);
@@ -1049,7 +1094,8 @@ $("#bt-tema").onclick = () => {
   r.dataset.theme = escuro ? "light" : "dark";
   try { localStorage.setItem("tema", r.dataset.theme); } catch(e) {}
 };
-$("#bt-print").onclick = () => { abrir("prob"); setTimeout(() => window.print(), 50); };
+$("#bt-print").onclick = () => { montarImpressao(); window.print(); };
+window.addEventListener("beforeprint", () => montarImpressao());
 
 /* ---------- Cabeçalho ---------- */
 const min = Math.floor(M.duracao/60), seg = M.duracao%60;
@@ -1297,6 +1343,48 @@ function detalhe(i){
 }
 $("#dr-x").onclick = $("#drawer .bg").onclick = () => $("#drawer").classList.remove("on");
 document.addEventListener("keydown", e => { if (e.key === "Escape") $("#drawer").classList.remove("on"); });
+
+/* ---------- Relatório impresso ---------- */
+// Usa os filtros da aba "Links quebrados" (tipo, busca e motivo); sem filtro, imprime tudo
+function montarImpressao(){
+  const lista = filtraLinks(probs, "#q-prob", "#f-prob-s", "#f-prob-c").filter(l => !filtroMotivo || l.mot === filtroMotivo);
+  const tipo = $("#f-prob-c").value, busca = $("#q-prob").value.trim();
+  const filtros = [tipo && CAT[tipo], busca && `busca “${busca}”`, filtroMotivo].filter(Boolean);
+  const kpi = (v, t, c = "") => `<div class="${c}"><b>${v}</b><span>${t}</span></div>`;
+  const nQi = probs.filter(l => l.c !== "externo").length;
+  let h = `<div class="im-topo">${LOGO ? `<img src="${LOGO}" alt="IPEDF">` : "<b>IPEDF</b>"}
+    <div class="tit"><h1>Relatório de Verificação de Links</h1>
+    <div class="sub">Sítio ${esc(curto(M.site))} · verificado em ${esc(M.data)} · referência ${esc(M.ref)}</div></div></div>
+    <div class="im-faixa"></div>
+    <div class="im-resumo">${kpi(fmt(nPag), "páginas percorridas")}${kpi(fmt(L.length), "links testados")}
+      ${kpi(fmt(probs.length), "links quebrados", "q")}${kpi(fmt(nQi), "no próprio sítio", "q")}
+      ${kpi(fmt(probs.length - nQi), "em sítios externos", "q")}${kpi(saude.toLocaleString("pt-BR", {maximumFractionDigits: 1}) + "%", "links funcionando")}</div>
+    <div class="im-nota">${filtros.length ? `Filtro aplicado: ${esc(filtros.join(" · "))} — ${fmt(lista.length)} link(s) listado(s).` : `Lista completa dos ${fmt(lista.length)} links quebrados, agrupados por tipo e pela página onde estão.`}
+      Links de menu/rodapé aparecem uma única vez.</div>`;
+  let n = 0;
+  ORD_TIPO.forEach(c => {
+    const ls = lista.filter(l => l.c === c).sort((a, b) => {
+      const pa = a.p.length ? trilha(P[a.p[0]]) : "", pb = b.p.length ? trilha(P[b.p[0]]) : "";
+      return pa.localeCompare(pb, "pt-BR") || a.u.localeCompare(b.u);
+    });
+    if (!ls.length) return;
+    h += `<section class="im-sec"><h2>${CAT[c]} <small>— ${fmt(ls.length)} link(s)</small></h2>
+      <table><colgroup><col style="width:4%"><col style="width:30%"><col style="width:46%"><col style="width:20%"></colgroup>
+      <thead><tr><th>Nº</th><th>Onde está no sítio</th><th>Link quebrado</th><th>Erro</th></tr></thead><tbody>`
+      + ls.map(l => {
+        const p = l.p.length ? P[l.p[0]] : null;
+        const pu = curto(p ? p.u : ""), puCurto = pu.length > 90 ? pu.slice(0, 88) + "…" : pu;
+        const onde = p ? `<b>${esc(trilha(p))}</b><br><small>${esc(puCurto)}</small>${l.p.length > 1 ? `<br><small>+ ${fmt(l.p.length - 1)} outra(s) página(s)${l.menu ? " — menu/rodapé" : ""}</small>` : ""}` : "<small>(ponto de partida)</small>";
+        const extra = l.d && l.d !== l.mot && !/^HTTP \d+$/.test(l.d) ? `<br><small>${esc(l.d)}</small>` : "";
+        return `<tr><td class="n">${++n}</td><td>${onde}</td>
+          <td>${l.x.length ? `<b>${esc(l.x[0])}</b><br>` : ""}<a href="${esc(l.u)}">${esc(l.u)}</a></td>
+          <td>${esc(l.mot || l.d || "")}${extra}</td></tr>`;
+      }).join("") + `</tbody></table></section>`;
+  });
+  if (!lista.length) h += `<p>Nenhum link quebrado ${filtros.length ? "para esse filtro" : "encontrado"}.</p>`;
+  h += `<div class="im-fim">Gerado automaticamente por verifica_links.py · IPEDF · ${esc(M.data)}</div>`;
+  $("#impressao").innerHTML = h;
+}
 
 /* ---------- CSV ---------- */
 function baixarCSV(linhas, nome){
