@@ -265,6 +265,25 @@ def caminho_navegacao(texto_html: str) -> list:
     return itens
 
 
+# Página de erro do Liferay que redireciona no navegador, ex.: /educacao/ responde 404
+# mas traz <meta http-equiv="refresh" content="0; URL='/w/educacao'">
+REDIR_CLIENTE = re.compile(
+    r"""http-equiv=["']?refresh["']?[^>]*?content=["']?\s*\d+\s*;\s*url=['"]?([^'">\s]+)"""
+    r"""|location\.replace\(\s*["']([^"']+)["']""",
+    re.I,
+)
+
+
+def destino_cliente(corpo: bytes, ct: str, base: str):
+    """Endereço para onde a página redireciona via meta refresh/JavaScript, se houver."""
+    if not corpo:
+        return None
+    m = REDIR_CLIENTE.search(decodificar(corpo[:100_000], ct))
+    if not m:
+        return None
+    return urllib.parse.urljoin(base, html.unescape(m.group(1) or m.group(2)))
+
+
 def decodificar(corpo: bytes, content_type: str) -> str:
     m = re.search(r"charset=([\w-]+)", content_type or "", re.I)
     for enc in ([m.group(1)] if m else []) + ["utf-8", "latin-1"]:
@@ -366,6 +385,14 @@ def testar_link(url, args, ctx, interno):
         time.sleep(1.5 * (tentativa + 1))
 
     st, final, ct, corpo, ms, erro = ultimo
+    # 404 interno que redireciona no navegador: vale o destino
+    if interno and st in (404, 410):
+        dest = destino_cliente(corpo, ct, url)
+        if dest:
+            st2, final2, ct2, corpo2, ms2, erro2 = requisitar(
+                dest, "GET", args.timeout, ctx, ler_corpo=200_000)
+            if 200 <= st2 < 400:
+                st, final, ct, corpo, ms, erro = st2, final2, ct2, corpo2, ms + ms2, ""
     r = Resultado(url, st, "", erro, final, ms)
 
     if st == 0:
@@ -459,6 +486,13 @@ def rastrear(args):
             pronto = next(as_completed(em_andamento))
             em_andamento.discard(pronto)
             url, st, final, ct, corpo, ms, erro = pronto.result()
+            # 404 que redireciona no navegador (meta refresh/JS): segue para o destino
+            if st in (404, 410):
+                dest = destino_cliente(corpo, ct, url)
+                if dest:
+                    _, st2, final2, ct2, corpo2, ms2, erro2 = baixar_pagina(dest)
+                    if 200 <= st2 < 400:
+                        st, final, ct, corpo, ms, erro = st2, final2, ct2, corpo2, ms + ms2, ""
             estado.paginas_visitadas.add(url)
 
             # A própria página já conta como resultado de teste
