@@ -885,6 +885,13 @@ nav button{font:inherit;font-size:13.5px;background:none;border:0;color:var(--br
 nav button:hover{opacity:1}
 nav button.on{background:var(--bg);color:var(--fg);opacity:1;font-weight:600}
 nav .cnt{font-size:11px;font-weight:600;background:var(--q);color:#fff;border-radius:9px;padding:1px 6px;margin-left:5px}
+nav .cnt.a{background:var(--a)}
+.kpi.a{cursor:pointer} .kpi.a:hover{border-color:var(--a)}
+.al{background:var(--surface);border:1px solid var(--bd);border-left:4px solid var(--a);border-radius:10px;margin-bottom:12px;box-shadow:var(--shadow)}
+.al .cab{padding:12px 16px}
+.al .cab b{font-size:14.5px}
+.al .cab p{margin:4px 0 0;color:var(--mut);font-size:13px}
+.al table td{font-size:13px}
 main{max-width:1320px;margin:0 auto;padding:20px 24px 48px}
 .aviso{border:1px solid var(--a);background:var(--a-bg);color:var(--fg);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
@@ -992,6 +999,8 @@ svg text{fill:var(--mut);font-size:11px}
   #impressao td small{color:#6b7280}
   #impressao td.n{text-align:right;color:#6b7280}
   .im-fim{margin-top:14px;color:#6b7280;font-size:8pt;text-align:center}
+  .im-sec.alerta h2{background:#fff7ed;border-left-color:#d97706;color:#7c2d12}
+  .im-sec.alerta .exp{margin:0 0 4px;color:#4b5563;font-size:8.5pt}
 }
 </style>
 </head>
@@ -1055,6 +1064,12 @@ svg text{fill:var(--mut);font-size:11px}
     </div>
     <div class="tblwrap"><table id="t-prob"></table></div>
     <button class="btn mais" id="m-prob">Mostrar mais</button>
+  </section>
+
+  <section class="tab" id="tab-alertas">
+    <p class="mut" style="margin:0 0 14px">Links que não dá para afirmar se estão quebrados: o servidor responde, mas pede login,
+      recusa o acesso automático ou leva para fora do sítio do IPEDF. Abra no navegador e decida o que fazer.</p>
+    <div id="alertas"></div>
   </section>
 
   <section class="tab" id="tab-onde">
@@ -1143,14 +1158,15 @@ if (!M.externos_testados) av += `<div class="aviso">Links externos não foram te
 const iprev = D.links.filter(l => l.d && l.d.startsWith("Leva ao sítio antigo do Iprev")).sort((a, b) => b.p.length - a.p.length);
 const avisoIprev = iprev.length ? `<div class="aviso"><b>${iprev.length} link(s) levam ao sítio antigo do Iprev</b> (conteúdo de outro órgão), que não foi percorrido. `
   + iprev.slice(0, 3).map(l => `<a href="${esc(l.u)}" target="_blank">${esc(curto(l.u))}</a>${l.x.length ? ` — “${esc(l.x[0])}”` : ""} em ${l.p.length.toLocaleString("pt-BR")} página(s)`).join("; ")
-  + (iprev.length > 3 ? "; …" : "") + `. Lista completa em <i>Todos os links</i>, situação <i>Alerta</i>.</div>` : "";
+  + (iprev.length > 3 ? "; …" : "") + `. Detalhes na aba <i>Alertas</i>.</div>` : "";
 av += avisoIprev;
 $("#avisos").innerHTML = av;
 
 /* ---------- Abas ---------- */
-const ABAS = [["geral","Visão geral"],["prob","Links quebrados"],["onde","Onde corrigir"],["todos","Todos os links"],["pags","Páginas percorridas"]];
+const ABAS = [["geral","Visão geral"],["prob","Links quebrados"],["alertas","Alertas"],["onde","Onde corrigir"],["todos","Todos os links"],["pags","Páginas percorridas"]];
+const nA = L.filter(l => l.s === "ALERTA").length;
 const nQ = L.filter(l => l.s === "QUEBRADO").length;
-$("#nav").innerHTML = ABAS.map(([k, t]) => `<button data-k="${k}">${t}${k === "prob" && nQ ? `<span class="cnt">${fmt(nQ)}</span>` : ""}</button>`).join("");
+$("#nav").innerHTML = ABAS.map(([k, t]) => `<button data-k="${k}">${t}${k === "prob" && nQ ? `<span class="cnt">${fmt(nQ)}</span>` : ""}${k === "alertas" && nA ? `<span class="cnt a">${fmt(nA)}</span>` : ""}</button>`).join("");
 const render = {};
 function abrir(k){
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
@@ -1182,7 +1198,8 @@ $("#kpis").innerHTML = [
   ["q", fmt(cont.QUEBRADO - qInt), "quebrados em sítios externos", delta(cont.QUEBRADO - qInt, ant && ant.quebrados_externos)],
   ["a", fmt(cont.ALERTA), "alertas para conferir", delta(cont.ALERTA, ant && ant.alertas)],
   ["ok", saude.toLocaleString("pt-BR", {maximumFractionDigits: 1}) + "%", "links funcionando", M.comparou_com && cont.QUEBRADO ? `<div class="dl mut">${fmt(novos)} quebrado(s) novo(s) desde ${esc(M.comparou_com)}</div>` : ""],
-].map(([c, v, l, d]) => `<div class="kpi ${c}"><div class="v">${v}</div><div class="l">${l}</div>${d}</div>`).join("");
+].map(([c, v, l, d]) => `<div class="kpi ${c}"${c === "a" ? ' title="Ver os alertas"' : ""}><div class="v">${v}</div><div class="l">${l}</div>${d}</div>`).join("");
+$("#kpis .kpi.a").onclick = () => abrir("alertas");
 
 const tot = L.length || 1;
 $("#stack").innerHTML = ["QUEBRADO","ALERTA","OK","IGNORADO"].map(s => cont[s] ? `<span style="width:${cont[s]/tot*100}%;background:${COR[s]}" title="${ROT[s]}: ${fmt(cont[s])}"></span>` : "").join("");
@@ -1335,6 +1352,45 @@ const tPags = tabela({t:"#t-pags", info:"#i-pags", mais:"#m-pags", inputs:["#q-p
   dados: () => { const q = $("#q-pags").value.trim().toLowerCase(), so = $("#f-pags-p").value; return P.filter(p => (!so || p.np) && (!q || p.busca.includes(q))); }});
 render.prob = tProb.desenhar; render.todos = tTodos.desenhar; render.pags = tPags.desenhar;
 
+/* ---------- Alertas ---------- */
+// Motivo em linguagem simples e o que fazer, por tipo de alerta
+function explicaAlerta(l){
+  const u = l.u.toLowerCase(), d = l.d || "";
+  if (d.startsWith("Leva ao sítio antigo do Iprev"))
+    return ["Leva ao sítio antigo do Iprev", "Quem clica sai do sítio do IPEDF e cai no sítio antigo do Iprev-DF, que ficou no mesmo servidor. Trocar o endereço por https://www.ipe.df.gov.br/."];
+  if (/forms\.gle\/|docs\.google\.com\/forms/.test(u))
+    return ["Formulário do Google que pede login", "O formulário está fechado ou restrito. Se a chamada já terminou, retirar o link ou indicar “inscrições encerradas”."];
+  if (/sei\.df\.gov\.br/.test(u) && /login/i.test(d))
+    return ["Documento do SEI que pede login", "Quem não tem login no SEI não consegue ver o documento. Usar o link de acesso externo do SEI ou publicar o PDF no próprio sítio."];
+  if (l.h === 401 || l.h === 403)
+    return ["Acesso negado ao verificador", "O servidor recusou o acesso automático (pode só bloquear robôs). Abrir no navegador para confirmar se a página carrega."];
+  if (/login/i.test(d))
+    return ["Pede login", "O link leva a uma tela de login; o público não consegue ver o conteúdo."];
+  if (l.h === 429)
+    return ["Servidor limitou as consultas", "Muitas consultas seguidas; testar de novo mais tarde."];
+  if (/página inicial/i.test(d))
+    return ["Redireciona para a página inicial", "O conteúdo pode ter sido removido; conferir se o destino é o esperado."];
+  return [d || "Conferir", "Abrir no navegador para conferir."];
+}
+const alertas = L.filter(l => l.s === "ALERTA");
+const gruposAlerta = [];
+alertas.forEach(l => {
+  const [t, e] = explicaAlerta(l);
+  let g = gruposAlerta.find(x => x.t === t);
+  if (!g) gruposAlerta.push(g = {t, e, ls: []});
+  g.ls.push(l);
+});
+gruposAlerta.forEach(g => g.ls.sort((a, b) => b.p.length - a.p.length));
+render.alertas = function(){
+  $("#alertas").innerHTML = gruposAlerta.length ? gruposAlerta.map(g => `<div class="al">
+    <div class="cab"><b>${esc(g.t)}</b> <span class="tag t-ALERTA">${fmt(g.ls.length)}</span><p>${esc(g.e)}</p></div>
+    <div class="tblwrap" style="border:0;border-top:1px solid var(--bd);border-radius:0 0 10px 10px;box-shadow:none"><table>
+    <thead><tr><th>Link</th><th>Onde está no sítio</th><th>Resposta</th></tr></thead><tbody>
+    ${g.ls.map(l => `<tr data-i="${l.i}"><td class="u">${celLink(l)}</td><td>${celOnde(l)}</td><td>${l.h ? "HTTP " + l.h : "—"}<br><small>${esc(l.d)}</small></td></tr>`).join("")}
+    </tbody></table></div></div>`).join("") : `<div class="empty">Nenhum alerta nesta verificação. ✔</div>`;
+};
+$("#alertas").addEventListener("click", e => { const tr = e.target.closest("tr[data-i]"); if (tr) detalhe(+tr.dataset.i); });
+
 /* ---------- Onde corrigir ---------- */
 function linhaOnde(l){
   return `<div><span class="tag t-${l.s}">${ROT[l.s]}</span> <a href="${esc(l.u)}" target="_blank">${esc(curto(l.u))}</a>
@@ -1424,6 +1480,21 @@ function montarImpressao(){
       }).join("") + `</tbody></table></section>`;
   });
   if (!lista.length) h += `<p>Nenhum link quebrado ${filtros.length ? "para esse filtro" : "encontrado"}.</p>`;
+  if (!filtros.length && gruposAlerta.length) {
+    h += `<section class="im-sec alerta"><h2>Alertas para conferir <small>— ${fmt(alertas.length)} link(s): não estão quebrados, mas o público pode não conseguir acessar</small></h2>`;
+    let a = 0;
+    gruposAlerta.forEach(g => {
+      h += `<p class="exp"><b>${esc(g.t)}</b> (${fmt(g.ls.length)}): ${esc(g.e)}</p>
+        <table><colgroup><col style="width:4%"><col style="width:30%"><col style="width:46%"><col style="width:20%"></colgroup>
+        <thead><tr><th>Nº</th><th>Onde está no sítio</th><th>Link</th><th>Resposta</th></tr></thead><tbody>`
+        + g.ls.map(l => {
+          const p = l.p.length ? P[l.p[0]] : null;
+          const onde = p ? `<b>${esc(trilha(p))}</b>${l.p.length > 1 ? `<br><small>+ ${fmt(l.p.length - 1)} outra(s) página(s)</small>` : ""}` : "";
+          return `<tr><td class="n">A${++a}</td><td>${onde}</td><td>${l.x.length ? `<b>${esc(l.x[0])}</b><br>` : ""}<a href="${esc(l.u)}">${esc(l.u)}</a></td><td>${l.h ? "HTTP " + l.h : "—"}</td></tr>`;
+        }).join("") + `</tbody></table>`;
+    });
+    h += `</section>`;
+  }
   h += `<div class="im-fim">Gerado automaticamente por verifica_links.py · IPEDF · ${esc(M.data)}</div>`;
   $("#impressao").innerHTML = h;
 }
