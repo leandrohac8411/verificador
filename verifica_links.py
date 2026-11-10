@@ -857,9 +857,9 @@ header .logo:empty{display:none}
 /* Tela larga: o logo vai para o canto esquerdo, na faixa azul que sobra ao lado do conteúdo */
 header{position:relative}
 header .logo-canto{display:none}
-@media (min-width:1720px){
-  header .logo-canto{display:block;position:absolute;left:32px;top:22px}
-  header .logo-canto img{height:30px;width:auto;display:block}
+@media (min-width:1810px){
+  header .logo-canto{display:block;position:absolute;left:28px;top:32px}
+  header .logo-canto img{height:34px;width:auto;display:block}
   header .marca .logo{display:none}
 }
 header .sub{opacity:.8;font-size:13px;margin-top:3px}
