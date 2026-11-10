@@ -761,15 +761,20 @@ def gerar_relatorios(estado, dominios, inicio, args, inicio_execucao):
 
 
 def montar_painel(js: str) -> str:
-    """Preenche o modelo do painel com os dados e o logo (embutido, arquivo único)."""
-    logo = ""
-    arq = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo_ipedf.png")
-    try:
-        with open(arq, "rb") as f:
-            logo = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
-    except OSError:
-        pass
-    return (PAINEL_HTML.replace('/*__LOGO__*/""', json.dumps(logo))
+    """Preenche o modelo do painel com os dados e os logos (embutidos, arquivo único).
+
+    logo_ipedf.png (colorido) vai no relatório impresso; logo_ipedf_branco.png
+    (branco, fundo transparente) vai no cabeçalho azul do painel.
+    """
+    def embutir(nome):
+        arq = os.path.join(os.path.dirname(os.path.abspath(__file__)), nome)
+        try:
+            with open(arq, "rb") as f:
+                return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+        except OSError:
+            return ""
+    return (PAINEL_HTML.replace('/*__LOGO__*/""', json.dumps(embutir("logo_ipedf.png")))
+            .replace('/*__LOGO_BRANCO__*/""', json.dumps(embutir("logo_ipedf_branco.png")))
             .replace("/*__DADOS__*/null", js))
 
 
@@ -845,8 +850,8 @@ header{background:var(--brand);color:var(--brand-fg);padding:18px 24px 0}
 header .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;max-width:1320px;margin:0 auto}
 header h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
 header .marca{display:flex;align-items:center;gap:14px;min-width:0}
-header .logo{background:#fff;border-radius:8px;padding:6px 10px;display:flex;align-items:center;flex-shrink:0}
-header .logo img{height:30px;width:auto;display:block}
+header .logo{display:flex;align-items:center;flex-shrink:0;padding-right:14px;border-right:1px solid rgba(255,255,255,.25)}
+header .logo img{height:28px;width:auto;display:block}
 header .logo:empty{display:none}
 @media (max-width:640px){header .logo img{height:22px}}
 header .sub{opacity:.8;font-size:13px;margin-top:3px}
@@ -1075,6 +1080,7 @@ svg text{fill:var(--mut);font-size:11px}
 <script>
 const D = /*__DADOS__*/null;
 const LOGO = /*__LOGO__*/"";
+const LOGO_BRANCO = /*__LOGO_BRANCO__*/"";
 (function(){
 "use strict";
 const $ = s => document.querySelector(s);
@@ -1106,7 +1112,7 @@ $("#bt-print").onclick = () => { montarImpressao(); window.print(); };
 window.addEventListener("beforeprint", () => montarImpressao());
 
 /* ---------- Cabeçalho ---------- */
-if (LOGO) $("#logo").innerHTML = `<img src="${LOGO}" alt="IPEDF">`;
+if (LOGO_BRANCO) $("#logo").innerHTML = `<img src="${LOGO_BRANCO}" alt="IPEDF">`;
 const min = Math.floor(M.duracao/60), seg = M.duracao%60;
 $("#sub").innerHTML = `<a href="${esc(M.site)}" target="_blank">${esc(curto(M.site))}</a> · verificado em ${esc(M.data)} · duração ${min} min ${seg} s · UCTIS`;
 let av = "";
