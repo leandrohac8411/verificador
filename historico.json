@@ -11,14 +11,14 @@
   "ok": 9432
  },
  {
-  "data": "2026-11-10 11:31",
+  "data": "2026-11-10 12:18",
   "ref": "2026-11",
-  "paginas": 777,
-  "links": 11098,
-  "quebrados": 358,
-  "quebrados_internos": 231,
-  "quebrados_externos": 127,
-  "alertas": 11,
-  "ok": 9453
+  "paginas": 584,
+  "links": 6683,
+  "quebrados": 221,
+  "quebrados_internos": 164,
+  "quebrados_externos": 57,
+  "alertas": 12,
+  "ok": 5509
  }
 ]
