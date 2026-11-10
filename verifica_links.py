@@ -844,6 +844,11 @@ a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
 header{background:var(--brand);color:var(--brand-fg);padding:18px 24px 0}
 header .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;max-width:1320px;margin:0 auto}
 header h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
+header .marca{display:flex;align-items:center;gap:14px;min-width:0}
+header .logo{background:#fff;border-radius:8px;padding:6px 10px;display:flex;align-items:center;flex-shrink:0}
+header .logo img{height:30px;width:auto;display:block}
+header .logo:empty{display:none}
+@media (max-width:640px){header .logo img{height:22px}}
 header .sub{opacity:.8;font-size:13px;margin-top:3px}
 header .sub a{color:inherit;text-decoration:underline}
 header .acoes{display:flex;gap:8px}
@@ -969,9 +974,12 @@ svg text{fill:var(--mut);font-size:11px}
 <body>
 <header>
   <div class="top">
-    <div>
-      <h1>Painel de Verificação de Links</h1>
-      <div class="sub" id="sub"></div>
+    <div class="marca">
+      <div class="logo" id="logo"></div>
+      <div>
+        <h1>Painel de Verificação de Links</h1>
+        <div class="sub" id="sub"></div>
+      </div>
     </div>
     <div class="acoes">
       <button class="btn" id="bt-tema" title="Alternar tema">◐ Tema</button>
@@ -1098,6 +1106,7 @@ $("#bt-print").onclick = () => { montarImpressao(); window.print(); };
 window.addEventListener("beforeprint", () => montarImpressao());
 
 /* ---------- Cabeçalho ---------- */
+if (LOGO) $("#logo").innerHTML = `<img src="${LOGO}" alt="IPEDF">`;
 const min = Math.floor(M.duracao/60), seg = M.duracao%60;
 $("#sub").innerHTML = `<a href="${esc(M.site)}" target="_blank">${esc(curto(M.site))}</a> · verificado em ${esc(M.data)} · duração ${min} min ${seg} s · UCTIS`;
 let av = "";
