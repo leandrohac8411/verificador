@@ -9,5 +9,16 @@
   "quebrados_externos": 128,
   "alertas": 11,
   "ok": 9432
+ },
+ {
+  "data": "2026-11-10 11:31",
+  "ref": "2026-11",
+  "paginas": 777,
+  "links": 11098,
+  "quebrados": 358,
+  "quebrados_internos": 231,
+  "quebrados_externos": 127,
+  "alertas": 11,
+  "ok": 9453
  }
 ]
