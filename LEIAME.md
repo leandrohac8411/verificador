@@ -43,16 +43,26 @@ python verifica_links.py --dominio infodf.ipe.df.gov.br   # tratar subdomínio c
 
 Código de saída: `0` sem quebrados · `1` há quebrados · `2` sítio inacessível.
 
-## Agendamento mensal (escolha um)
+## Agendamento mensal
 
-**GitHub Actions** – já configurado em `.github/workflows/verificar-links.yml`: roda no
-dia 1 de cada mês às 07h (Brasília) e pode ser disparado à mão em *Actions > Verificar
-links > Run workflow*. O relatório fica nos artefatos da execução por 90 dias.
-O histórico (`historico.json` e o CSV de quebrados dos 2 últimos meses) é gravado
-automaticamente na branch `historico`, para o gráfico de evolução e a marcação de
-links "novos" funcionarem entre as execuções.
-Ao final, o painel é copiado para `index.html` na raiz e enviado à branch `main`;
-com o repositório ligado à Vercel, o painel publicado se atualiza sozinho.
+**Em uso: Agendador de Tarefas do Windows.** A tarefa *"IPEDF - Verificar links (mensal)"*
+roda `executar_mensal.bat` no dia 1 de cada mês às 07h; se o computador estiver
+desligado nesse horário, roda assim que ele for ligado (é preciso estar com a sessão
+do usuário aberta). O `.bat`:
+
+1. roda `verifica_links.py` (relatórios em `relatorios/`);
+2. se a verificação terminou bem, roda `publicar.py`, que envia o painel como
+   `index.html` à branch `main` (a Vercel publica sozinha) e o histórico
+   (`historico.json` + CSV de quebrados dos 2 últimos meses) à branch `historico`;
+3. registra tudo em `relatorios/execucao.log`. Se o sítio estiver inacessível
+   (código 2), nada é publicado.
+
+Para rodar fora do dia 1: no Agendador de Tarefas, clique com o botão direito na
+tarefa e escolha *Executar*, ou dê dois cliques em `executar_mensal.bat`.
+
+**GitHub Actions** – `.github/workflows/verificar-links.yml` faz o mesmo, mas só por
+execução manual: os servidores do GitHub ficam fora do Brasil e não conseguem acessar
+o sítio do IPEDF (a execução agendada de 01/11/2026 falhou por isso).
 
 **GitLab CI** – suba esta pasta num repositório, e em *Build > Pipeline schedules*
 crie o agendamento `0 7 1 * *` (fuso America/Sao_Paulo). O relatório fica nos
@@ -62,9 +72,6 @@ artefatos do pipeline por 1 ano. Arquivo: `.gitlab-ci.yml`.
 ```
 0 7 1 * * cd /opt/verificador-links && python3 verifica_links.py --saida relatorios >> relatorios/execucao.log 2>&1
 ```
-
-**Windows (Agendador de Tarefas)** – crie tarefa mensal (dia 1, 07h) executando
-`executar_mensal.bat`.
 
 ## Observações
 
