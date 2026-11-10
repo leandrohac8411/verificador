@@ -33,6 +33,14 @@ header .logo{display:flex;align-items:center;flex-shrink:0;padding-right:14px;bo
 header .logo img{height:28px;width:auto;display:block}
 header .logo:empty{display:none}
 @media (max-width:640px){header .logo img{height:22px}}
+/* Tela larga: o logo vai para o canto esquerdo, na faixa azul que sobra ao lado do conteúdo */
+header{position:relative}
+header .logo-canto{display:none}
+@media (min-width:1720px){
+  header .logo-canto{display:block;position:absolute;left:32px;top:22px}
+  header .logo-canto img{height:30px;width:auto;display:block}
+  header .marca .logo{display:none}
+}
 header .sub{opacity:.8;font-size:13px;margin-top:3px}
 header .sub a{color:inherit;text-decoration:underline}
 header .acoes{display:flex;gap:8px}
@@ -157,6 +165,7 @@ svg text{fill:var(--mut);font-size:11px}
 </head>
 <body>
 <header>
+  <div class="logo-canto" id="logo-canto"></div>
   <div class="top">
     <div class="marca">
       <div class="logo" id="logo"></div>
@@ -291,7 +300,7 @@ $("#bt-print").onclick = () => { montarImpressao(); window.print(); };
 window.addEventListener("beforeprint", () => montarImpressao());
 
 /* ---------- Cabeçalho ---------- */
-if (LOGO_BRANCO) $("#logo").innerHTML = `<img src="${LOGO_BRANCO}" alt="IPEDF">`;
+if (LOGO_BRANCO) $("#logo").innerHTML = $("#logo-canto").innerHTML = `<img src="${LOGO_BRANCO}" alt="IPEDF">`;
 const min = Math.floor(M.duracao/60), seg = M.duracao%60;
 $("#sub").innerHTML = `<a href="${esc(M.site)}" target="_blank">${esc(curto(M.site))}</a> · verificado em ${esc(M.data)} · duração ${min} min ${seg} s · UCTIS`;
 let av = "";
