@@ -82,6 +82,11 @@ COMPARTILHAR = re.compile(
     re.I,
 )
 
+# Páginas do sítio antigo do Iprev-DF que continuam no mesmo servidor (ex.: /web/guest):
+# não são conteúdo do IPEDF, então não são percorridas e o link que leva a elas vira alerta
+SITIO_IPREV = re.compile(r"Gest[ãa]o do Iprev", re.I)
+DETALHE_IPREV = "Leva ao sítio antigo do Iprev (conteúdo de outro órgão)"
+
 # Prefixo de idioma do Liferay (/pt/pagina == /pagina)
 PREFIXO_IDIOMA = re.compile(r"^/(pt|pt-br|pt_br)(/|$)", re.I)
 
@@ -418,6 +423,9 @@ def testar_link(url, args, ctx, interno):
             if SOFT_404.search(alvo):
                 r.situacao = "QUEBRADO"
                 r.detalhe = "Página exibe 'não encontrada' (soft 404)"
+            elif SITIO_IPREV.search(texto):
+                r.situacao = "ALERTA"
+                r.detalhe = DETALHE_IPREV
         if r.situacao == "OK" and final and final.rstrip("/") != url.rstrip("/"):
             # redirecionou para a página inicial/login = provável link morto
             dest = urllib.parse.urlsplit(final)
@@ -524,6 +532,9 @@ def rastrear(args):
                 elif "login" in final.lower() and "login" not in url.lower():
                     r.situacao = "ALERTA"
                     r.detalhe = "Redireciona para tela de login"
+            if r.situacao == "OK" and "html" in ct.lower() and \
+                    SITIO_IPREV.search(decodificar(corpo[:300_000], ct)):
+                r.situacao, r.detalhe = "ALERTA", DETALHE_IPREV
             estado.resultados[url] = r
             if r.situacao != "OK":
                 continue
@@ -1128,6 +1139,12 @@ let av = "";
 if (M.demo) av += `<div class="aviso"><b>Dados de demonstração.</b> Este painel foi gerado a partir de um sítio de teste, não do sítio real. Execute <code>verifica_links.py</code> na rede do Instituto para obter os dados reais.</div>`;
 if (M.limite_atingido) av += `<div class="aviso">O limite de ${fmt(M.limite)} páginas foi atingido; parte do sítio pode não ter sido percorrida. Rode novamente com <code>--max-paginas</code> maior.</div>`;
 if (!M.externos_testados) av += `<div class="aviso">Links externos não foram testados nesta execução (<code>--sem-externos</code>).</div>`;
+// Links que levam ao sítio antigo do Iprev (ex.: 1º item do caminho de navegação)
+const iprev = D.links.filter(l => l.d && l.d.startsWith("Leva ao sítio antigo do Iprev")).sort((a, b) => b.p.length - a.p.length);
+const avisoIprev = iprev.length ? `<div class="aviso"><b>${iprev.length} link(s) levam ao sítio antigo do Iprev</b> (conteúdo de outro órgão), que não foi percorrido. `
+  + iprev.slice(0, 3).map(l => `<a href="${esc(l.u)}" target="_blank">${esc(curto(l.u))}</a>${l.x.length ? ` — “${esc(l.x[0])}”` : ""} em ${l.p.length.toLocaleString("pt-BR")} página(s)`).join("; ")
+  + (iprev.length > 3 ? "; …" : "") + `. Lista completa em <i>Todos os links</i>, situação <i>Alerta</i>.</div>` : "";
+av += avisoIprev;
 $("#avisos").innerHTML = av;
 
 /* ---------- Abas ---------- */
@@ -1384,7 +1401,8 @@ function montarImpressao(){
       ${kpi(fmt(probs.length), "links quebrados", "q")}${kpi(fmt(nQi), "no próprio sítio", "q")}
       ${kpi(fmt(probs.length - nQi), "em sítios externos", "q")}${kpi(saude.toLocaleString("pt-BR", {maximumFractionDigits: 1}) + "%", "links funcionando")}</div>
     <div class="im-nota">${filtros.length ? `Filtro aplicado: ${esc(filtros.join(" · "))} — ${fmt(lista.length)} link(s) listado(s).` : `Lista completa dos ${fmt(lista.length)} links quebrados, agrupados por tipo e pela página onde estão.`}
-      Links de menu/rodapé aparecem uma única vez.</div>`;
+      Links de menu/rodapé aparecem uma única vez.</div>
+    ${avisoIprev ? `<div class="im-nota" style="border:1px solid #d97706;background:#fff7ed;border-radius:6px;padding:6px 8px;color:#111827">${avisoIprev.replace(/^<div class="aviso">|<\/div>$/g, "")}</div>` : ""}`;
   let n = 0;
   ORD_TIPO.forEach(c => {
     const ls = lista.filter(l => l.c === c).sort((a, b) => {
